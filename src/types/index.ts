@@ -35,18 +35,13 @@ export interface Match {
     dangerous_attacks: [number, number];
     off_target: [number, number];
     on_target: [number, number];
-    possession: [number, number];
-    momentum: [number, number];
     corners: [number, number];
     goals: [number, number];
     penalties: [number, number];
     redcards: [number, number];
-    substitutions: [number, number];
     yellowcards: [number, number];
-    ball_safe: [number, number];
-    injuries: [number, number];
-    crossing_accuracy: [number, number];
-    passing_accuracy: [number, number];
+    possession: [number, number];
+    momentum: [number, number];
     xg: [number | null, number | null];
   };
   stats_trend: {
@@ -54,15 +49,13 @@ export interface Match {
     dangerous_attacks: { [key: string]: [number, number] };
     off_target: { [key: string]: [number, number] };
     on_target: { [key: string]: [number, number] };
-    momentum: { [key: string]: [number, number] };
     corners: { [key: string]: [number, number] };
     goals: { [key: string]: [number, number] };
     penalties: { [key: string]: [number, number] };
     redcards: { [key: string]: [number, number] };
-    substitutions: { [key: string]: [number, number] };
     yellowcards: { [key: string]: [number, number] };
-    ball_safe: { [key: string]: [number, number] };
-    injuries: { [key: string]: [number, number] };
+    possession: { [key: string]: [number, number] };
+    momentum: { [key: string]: [number, number] };
     xg: { [key: string]: [number | null, number | null] };
   };
   odds: {
