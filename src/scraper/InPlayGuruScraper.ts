@@ -5,12 +5,15 @@ import logger from '../utils/logger';
 import { MatchData } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
+import zlib from 'zlib';
 
 export class InPlayGuruScraper {
   private browser: Browser | null = null;
   private page: Page | null = null;
   private readonly outputPath = path.join(process.cwd(), 'output', 'analysis.json');
   private readonly tempOutputPath = path.join(process.cwd(), 'output', 'analysis.json.tmp');
+  private readonly outputPathGz = path.join(process.cwd(), 'output', 'analysis.gz');
+  private readonly tempOutputPathGz = path.join(process.cwd(), 'output', 'analysis.gz.tmp');
   private matchData: MatchData = {};
   private loginCheckInterval: NodeJS.Timeout | null = null;
   private isWriting: boolean = false;
@@ -22,14 +25,25 @@ export class InPlayGuruScraper {
       // Ensure output directory exists
       const outputDir = path.dirname(this.outputPath);
       await fs.promises.mkdir(outputDir, { recursive: true });
-  
+
       // Write to temporary file first
       await fs.promises.writeFile(
         this.tempOutputPath,
         JSON.stringify(this.matchData, null, 2),
         'utf-8'
       );
-  
+
+      // Compress JSON and write to temp .gz file
+      const gzippedBuffer = await new Promise<Buffer>((resolve, reject) => {
+        zlib.gzip(JSON.stringify(this.matchData, null, 2), (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        });
+      });
+
+      // Write compressed buffer to temp .gz file
+      await fs.promises.writeFile(this.tempOutputPathGz, gzippedBuffer);
+
       // Safely remove the existing file if it exists
       try {
         await fs.promises.access(this.outputPath);
@@ -37,10 +51,18 @@ export class InPlayGuruScraper {
       } catch (err) {
         // File doesn't exist; that's okay
       }
-  
+
+      try {
+        await fs.promises.access(this.outputPathGz);
+        await fs.promises.unlink(this.outputPathGz);
+      } catch (err) {
+        // File doesn't exist; that's okay
+      }
+
       // Rename temp file to actual file
       await fs.promises.rename(this.tempOutputPath, this.outputPath);
-  
+      await fs.promises.rename(this.tempOutputPathGz, this.outputPathGz);
+
       logger.info('Match data saved to analysis.json');
     } catch (error) {
       // logger.error('Failed to save match data:', error);
@@ -122,10 +144,10 @@ export class InPlayGuruScraper {
 
       // Wait for the login link to be available
       await this.page.waitForSelector('a.nav-link[href="/login"]');
-      
+
       // Click the login link
       await this.page.click('a.nav-link[href="/login"]');
-      
+
       logger.info('Clicked login button');
     } catch (error) {
       logger.error('Failed to find or click login button:', error);
@@ -142,7 +164,7 @@ export class InPlayGuruScraper {
     this.loginCheckInterval = setInterval(async () => {
       try {
         if (!this.page) return;
-        
+
         // Check if login button exists
         const loginButton = await this.page.$('a.nav-link[href="/login"]');
         if (loginButton) {
@@ -367,7 +389,7 @@ export class InPlayGuruScraper {
           const matchData = JSON.parse(rawData) as MatchData;
           // Store the initial match data
           this.matchData = matchData;
-          for(const matchId in this.matchData) {
+          for (const matchId in this.matchData) {
             this.matchData[matchId].stats = {
               attacks: [matchData[matchId].stats.attacks?.[0], matchData[matchId].stats.attacks?.[1]],
               dangerous_attacks: [matchData[matchId].stats.dangerous_attacks?.[0], matchData[matchId].stats.dangerous_attacks?.[1]],
@@ -405,7 +427,7 @@ export class InPlayGuruScraper {
             //   match.stats_trend.xg = {};
             // }
           }
-          
+
           await this.saveMatchData();
         }
       });
@@ -461,5 +483,5 @@ export class InPlayGuruScraper {
   }
 
 
-  
+
 } 
