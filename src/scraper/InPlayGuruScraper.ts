@@ -11,7 +11,6 @@ export class InPlayGuruScraper {
   private page: Page | null = null;
   private readonly outputPath = path.join(process.cwd(), 'output', 'analysis.json');
   private readonly tempOutputPath = path.join(process.cwd(), 'output', 'analysis.json.tmp');
-  private readonly socketDataPath = path.join(process.cwd(), 'output', 'socket_data.json');
   private matchData: MatchData = {};
   private loginCheckInterval: NodeJS.Timeout | null = null;
   private isWriting: boolean = false;
@@ -366,18 +365,47 @@ export class InPlayGuruScraper {
         if (url.includes("inplayguru.com/matches")) {
           const rawData = await response.text();
           const matchData = JSON.parse(rawData) as MatchData;
-          for(const matchId in matchData) {
-            const match = matchData[matchId];
-            if(!match.stats.xg) {
-              match.stats.xg = [null, null];
-            }
-            if(!match.stats_trend.xg) {
-              match.stats_trend.xg = {};
-            }
-          }
           // Store the initial match data
           this.matchData = matchData;
+          for(const matchId in this.matchData) {
+            this.matchData[matchId].stats = {
+              attacks: [matchData[matchId].stats.attacks?.[0], matchData[matchId].stats.attacks?.[1]],
+              dangerous_attacks: [matchData[matchId].stats.dangerous_attacks?.[0], matchData[matchId].stats.dangerous_attacks?.[1]],
+              off_target: [matchData[matchId].stats.off_target?.[0], matchData[matchId].stats.off_target?.[1]],
+              on_target: [matchData[matchId].stats.on_target?.[0], matchData[matchId].stats.on_target?.[1]],
+              corners: [matchData[matchId].stats.corners?.[0], matchData[matchId].stats.corners?.[1]],
+              goals: [matchData[matchId].stats.goals?.[0], matchData[matchId].stats.goals?.[1]],
+              penalties: [matchData[matchId].stats.penalties?.[0], matchData[matchId].stats.penalties?.[1]],
+              redcards: [matchData[matchId].stats.redcards?.[0], matchData[matchId].stats.redcards?.[1]],
+              yellowcards: [matchData[matchId].stats.yellowcards?.[0], matchData[matchId].stats.yellowcards?.[1]],
+              possession: [matchData[matchId].stats.possession?.[0], matchData[matchId].stats.possession?.[1]],
+              momentum: [matchData[matchId].stats.momentum?.[0], matchData[matchId].stats.momentum?.[1]],
+              xg: [matchData[matchId].stats.xg?.[0] || null, matchData[matchId].stats.xg?.[1] || null],
+            }
 
+            this.matchData[matchId].stats_trend = {
+              attacks: matchData[matchId].stats_trend.attacks,
+              dangerous_attacks: matchData[matchId].stats_trend.dangerous_attacks,
+              off_target: matchData[matchId].stats_trend.off_target,
+              on_target: matchData[matchId].stats_trend.on_target,
+              corners: matchData[matchId].stats_trend.corners,
+              goals: matchData[matchId].stats_trend.goals,
+              penalties: matchData[matchId].stats_trend.penalties,
+              redcards: matchData[matchId].stats_trend.redcards,
+              yellowcards: matchData[matchId].stats_trend.yellowcards,
+              possession: matchData[matchId].stats_trend.possession,
+              momentum: matchData[matchId].stats_trend.momentum,
+              xg: matchData[matchId].stats_trend.xg || {},
+            }
+            // const match = matchData[matchId];
+            // if(!match.stats.xg) {
+            //   match.stats.xg = [null, null];
+            // }
+            // if(!match.stats_trend.xg) {
+            //   match.stats_trend.xg = {};
+            // }
+          }
+          
           await this.saveMatchData();
         }
       });
