@@ -44,20 +44,20 @@ export class InPlayGuruScraper {
       // Write compressed buffer to temp .gz file
       await fs.promises.writeFile(this.tempOutputPathGz, gzippedBuffer);
 
-      // Safely remove the existing file if it exists
-      try {
-        await fs.promises.access(this.outputPath);
-        await fs.promises.unlink(this.outputPath);
-      } catch (err) {
-        // File doesn't exist; that's okay
-      }
+      // // Safely remove the existing file if it exists
+      // try {
+      //   await fs.promises.access(this.outputPath);
+      //   await fs.promises.unlink(this.outputPath);
+      // } catch (err) {
+      //   // File doesn't exist; that's okay
+      // }
 
-      try {
-        await fs.promises.access(this.outputPathGz);
-        await fs.promises.unlink(this.outputPathGz);
-      } catch (err) {
-        // File doesn't exist; that's okay
-      }
+      // try {
+      //   await fs.promises.access(this.outputPathGz);
+      //   await fs.promises.unlink(this.outputPathGz);
+      // } catch (err) {
+      //   // File doesn't exist; that's okay
+      // }
 
       // Rename temp file to actual file
       await fs.promises.rename(this.tempOutputPath, this.outputPath);
