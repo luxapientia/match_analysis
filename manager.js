@@ -2,6 +2,12 @@
 const express = require('express');
 const fs = require('fs');
 const { spawn, execSync } = require('child_process');
+const { main } = require('./main.js');
+
+main().catch(err => {
+    console.error('Unhandled error:', err);
+    process.exit(1);
+})
 
 const app = express();
 const PORT = 4000;

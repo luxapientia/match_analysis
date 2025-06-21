@@ -1,7 +1,6 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import fs from 'fs';
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 80;
@@ -11,7 +10,7 @@ app.use(cors());
 
 app.use(express.static(path.join(__dirname, 'output')));
 
-async function main() {
+exports.main = async function main() {
 
   try {
     // Start the HTTP server
@@ -26,8 +25,3 @@ async function main() {
     // await scraper.close();
   }
 }
-
-main().catch(error => {
-  console.error('Unhandled error:', error);
-  process.exit(1);
-}); 
