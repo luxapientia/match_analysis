@@ -579,9 +579,13 @@ export class InPlayGuruScraper {
       await this.page.waitForSelector('input[name="password"]');
       await this.page.waitForSelector('button[type="submit"]');
 
+      await this.page.waitForTimeout(1000);
+
       // Fill in the form
       await this.page.type('input[name="email"]', email);
+      await this.page.waitForTimeout(1000);
       await this.page.type('input[name="password"]', password);
+      await this.page.waitForTimeout(1000);
 
       // Submit the form and wait for navigation
       await Promise.all([
