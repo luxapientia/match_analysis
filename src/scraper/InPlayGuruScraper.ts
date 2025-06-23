@@ -2,7 +2,7 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { config } from '../config/config';
 import logger from '../utils/logger';
-import { MatchData } from '../types';
+import { MatchData, ScheduleData, ScheduleMatch } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import zlib from 'zlib';
@@ -10,11 +10,19 @@ import zlib from 'zlib';
 export class InPlayGuruScraper {
   private browser: Browser | null = null;
   private page: Page | null = null;
-  private readonly outputPath = path.join(process.cwd(), 'output', 'analysis.json');
-  private readonly tempOutputPath = path.join(process.cwd(), 'output', 'analysis.json.tmp');
-  private readonly outputPathGz = path.join(process.cwd(), 'output', 'analysis.gz');
-  private readonly tempOutputPathGz = path.join(process.cwd(), 'output', 'analysis.gz.tmp');
+  private readonly outputAnalysisPath = path.join(process.cwd(), 'output', 'analysis.json');
+  private readonly tempOutputAnalysisPath = path.join(process.cwd(), 'output', 'analysis.json.tmp');
+  private readonly outputAnalysisPathGz = path.join(process.cwd(), 'output', 'analysis.gz');
+  private readonly tempOutputAnalysisPathGz = path.join(process.cwd(), 'output', 'analysis.gz.tmp');
+  private readonly outputSchedulePath = path.join(process.cwd(), 'output', 'schedule.json');
+  private readonly tempOutputSchedulePath = path.join(process.cwd(), 'output', 'schedule.json.tmp');
+  private readonly outputSchedulePathGz = path.join(process.cwd(), 'output', 'schedule.gz');
+  private readonly tempOutputSchedulePathGz = path.join(process.cwd(), 'output', 'schedule.gz.tmp');
   private matchData: MatchData = {};
+  private scheduleData: ScheduleData = {
+    matches: [],
+    timestamp: 0
+  };
   private loginCheckInterval: NodeJS.Timeout | null = null;
   private isWriting: boolean = false;
 
@@ -23,12 +31,12 @@ export class InPlayGuruScraper {
       if (this.isWriting) return;
       this.isWriting = true;
       // Ensure output directory exists
-      const outputDir = path.dirname(this.outputPath);
+      const outputDir = path.dirname(this.outputAnalysisPath);
       await fs.promises.mkdir(outputDir, { recursive: true });
 
       // Write to temporary file first
       await fs.promises.writeFile(
-        this.tempOutputPath,
+        this.tempOutputAnalysisPath,
         JSON.stringify(this.matchData, null, 2),
         'utf-8'
       );
@@ -42,26 +50,11 @@ export class InPlayGuruScraper {
       });
 
       // Write compressed buffer to temp .gz file
-      await fs.promises.writeFile(this.tempOutputPathGz, gzippedBuffer);
-
-      // // Safely remove the existing file if it exists
-      // try {
-      //   await fs.promises.access(this.outputPath);
-      //   await fs.promises.unlink(this.outputPath);
-      // } catch (err) {
-      //   // File doesn't exist; that's okay
-      // }
-
-      // try {
-      //   await fs.promises.access(this.outputPathGz);
-      //   await fs.promises.unlink(this.outputPathGz);
-      // } catch (err) {
-      //   // File doesn't exist; that's okay
-      // }
+      await fs.promises.writeFile(this.tempOutputAnalysisPathGz, gzippedBuffer);
 
       // Rename temp file to actual file
-      await fs.promises.rename(this.tempOutputPath, this.outputPath);
-      await fs.promises.rename(this.tempOutputPathGz, this.outputPathGz);
+      await fs.promises.rename(this.tempOutputAnalysisPath, this.outputAnalysisPath);
+      await fs.promises.rename(this.tempOutputAnalysisPathGz, this.outputAnalysisPathGz);
 
       logger.info('Match data saved to analysis.json');
     } catch (error) {
@@ -441,9 +434,86 @@ export class InPlayGuruScraper {
       });
 
       logger.info('Navigated to schedule page');
-      
+
+      const scrapeData = async () => {
+        if (!this.page) throw new Error('Browser not initialized');
+
+        // Wait for the table to be loaded
+        await this.page.waitForSelector('#table-fixtures');
+
+        // Extract schedule data
+        const scheduleData = await this.page.evaluate(() => {
+          const matches: any[] = [];
+          const rows = document.querySelectorAll('#table-fixtures tbody tr');
+
+          rows.forEach(row => {
+            const timeCell = row.querySelector('td:nth-child(1)');
+            const leagueCell = row.querySelector('td:nth-child(2)');
+            const matchCell = row.querySelector('td:nth-child(3)');
+
+            if (timeCell && leagueCell && matchCell) {
+              const timeSpans = timeCell.querySelectorAll('span');
+              const teams = matchCell.textContent?.split('\n').map(t => t.trim()).filter(Boolean) || [];
+
+              matches.push({
+                time: timeSpans[0]?.textContent?.trim() || '',
+                timeUTC: timeSpans[0]?.textContent?.trim() || '',
+                timeFromNow: timeSpans[1]?.querySelector('span')?.textContent?.trim() || '',
+                league: leagueCell.textContent?.trim() || '',
+                homeTeam: teams[0] || '',
+                awayTeam: teams[1] || ''
+              });
+            }
+          });
+
+          return {
+            matches,
+            timestamp: Date.now()
+          };
+        });
+
+        this.scheduleData = scheduleData;
+        await this.saveScheduleData(scheduleData);
+
+        logger.info(`Successfully scraped ${scheduleData.matches.length} schedules`);
+        await this.page.reload();
+      }
+
+      setInterval(async () => {
+        await scrapeData();
+      }, 10000);
+
     } catch (error) {
       logger.error('Failed to scrape schedule data:', error);
+      throw error;
+    }
+  }
+
+  async saveScheduleData(scheduleData: ScheduleData): Promise<void> {
+    try {
+      const outputDir = path.dirname(this.outputSchedulePath);
+      await fs.promises.mkdir(outputDir, { recursive: true });
+
+      await fs.promises.writeFile(
+        this.tempOutputSchedulePath,
+        JSON.stringify(scheduleData, null, 2)
+      );
+
+      const gzippedBuffer = await new Promise<Buffer>((resolve, reject) => {
+        zlib.gzip(JSON.stringify(scheduleData, null, 2), (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        });
+      });
+
+      await fs.promises.writeFile(this.tempOutputSchedulePathGz, gzippedBuffer);
+
+      await fs.promises.rename(this.tempOutputSchedulePath, this.outputSchedulePath);
+      await fs.promises.rename(this.tempOutputSchedulePathGz, this.outputSchedulePathGz);
+
+      logger.info('Schedule data saved to schedule.json');
+    } catch (error) {
+      logger.error('Failed to save schedule data:', error);
       throw error;
     }
   }
@@ -471,7 +541,7 @@ export class InPlayGuruScraper {
   async login(email: string, password: string) {
     try {
       if (!this.page) throw new Error('Browser not initialized');
-      
+
       // Check if login button exists
       try {
         await this.page.waitForSelector('a.nav-link[href="https://inplayguru.com/login"]', { timeout: 3000 });
@@ -482,13 +552,13 @@ export class InPlayGuruScraper {
 
       // Click the login button
       await this.page.click('a.nav-link[href="https://inplayguru.com/login"]');
-      
+
       // Wait until URL changes to login page
       await this.page.waitForFunction(
         'window.location.href.includes("/login")',
         { timeout: 5000 }
       );
-      
+
       logger.info('Successfully navigated to login page');
 
       // Wait for the form elements to be present
@@ -507,7 +577,7 @@ export class InPlayGuruScraper {
       ]);
 
       logger.info('Login form submitted successfully');
-      
+
     } catch (error) {
       logger.error('Failed to login:', error);
       throw error;
