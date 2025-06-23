@@ -14,6 +14,7 @@ async function main() {
     // Initialize and run the scraper
     await scraper.initialize("Profile 1");
     await scraper.scrapeMatchData();
+    await scraper.scrapeScheduleData();
     
   } catch (error) {
     logger.error('Application error:', error);
