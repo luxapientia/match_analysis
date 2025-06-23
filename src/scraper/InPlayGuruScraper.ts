@@ -137,78 +137,40 @@ export class InPlayGuruScraper {
     return;
   }
 
-  private async findAndClickLoginButton(): Promise<void> {
-    console.log('-------------------------------------------')
-    try {
-      if (!this.page) throw new Error('Browser not initialized');
-
-      // Wait for the login link to be available
-      await this.page.waitForSelector('a.nav-link[href="/login"]');
-
-      // Click the login link
-      await this.page.click('a.nav-link[href="/login"]');
-
-      logger.info('Clicked login button');
-    } catch (error) {
-      logger.error('Failed to find or click login button:', error);
-      throw error;
-    }
-  }
-
-  private async startLoginCheck(): Promise<void> {
-    // Clear any existing interval
-    if (this.loginCheckInterval) {
-      clearInterval(this.loginCheckInterval);
-    }
-
-    this.loginCheckInterval = setInterval(async () => {
-      try {
-        if (!this.page) return;
-
-        // Check if login button exists
-        const loginButton = await this.page.$('a.nav-link[href="/login"]');
-        if (loginButton) {
-          logger.info('Login required, attempting to click login button');
-          await this.findAndClickLoginButton();
-        }
-      } catch (error) {
-        logger.error('Error in login check:', error);
-      }
-    }, 1000); // Check every 30 seconds
-  }
-
-  async initialize(): Promise<void> {
+  async initialize(profile: string = 'Profile 1'): Promise<void> {
+    console.log('Initializing browser with profile:', profile);
     try {
       this.browser = await puppeteer.launch({
         headless: false,
+        executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         args: [
-          '--disable-web-security',
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--start-maximized',
-          '--disable-notifications',
           '--disable-dev-shm-usage',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-infobars',
-          '--window-position=0,0',
-          '--ignore-certificate-errors',
-          '--lang=en-US,en',
-          '--enable-javascript',
-          '--enable-cookies',
-          '--enable-dom-storage',
-          '--enable-webgl',
-          '--enable-gpu',
-          '--hide-scrollbars',
-          '--mute-audio',
-          '--disable-background-timer-throttling',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--window-size=1920,1080',
+          '--start-maximized',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
-          '--profile-directory=Profile 1'
+          `--profile-directory=${profile}`,
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-breakpad',
+          '--disable-component-extensions-with-background-pages',
+          '--disable-extensions',
+          '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+          '--disable-ipc-flooding-protection',
+          '--disable-renderer-backgrounding',
+          '--enable-automation',
+          '--force-color-profile=srgb',
+          '--metrics-recording-only',
+          '--no-first-run',
+          '--password-store=basic'
         ],
         defaultViewport: null,
         ignoreDefaultArgs: ['--enable-automation'],
-        userDataDir: './chrome-automation-profile',
-        executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+        ignoreHTTPSErrors: true
       });
 
       this.page = await this.browser.newPage();
@@ -365,6 +327,11 @@ export class InPlayGuruScraper {
         document.head.appendChild(style);
       });
 
+      await this.page.goto(config.baseUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 10000
+      });
+
       // Expose the processWebSocketData function to the browser
       await this.page.exposeFunction('sendWebSocketDataToBackend',
         (data: string) => this.processWebSocketData(data)
@@ -381,7 +348,8 @@ export class InPlayGuruScraper {
     try {
       if (!this.page) throw new Error('Browser not initialized');
 
-      logger.info('Navigated to target URL');
+      await this.login(config.email, config.password);
+
       this.page.on('response', async (response: any) => {
         const url = response.url();
         if (url.includes("inplayguru.com/matches")) {
@@ -449,7 +417,7 @@ export class InPlayGuruScraper {
         };
       });
 
-      await this.page.goto(config.targetUrl, {
+      await this.page.goto(config.inPlayUrl, {
         waitUntil: 'domcontentloaded',
         timeout: 300000
       });
@@ -458,6 +426,24 @@ export class InPlayGuruScraper {
 
     } catch (error) {
       logger.error('Failed to scrape match data:', error);
+      throw error;
+    }
+  }
+
+  async scrapeScheduleData(): Promise<void> {
+    try {
+      if (!this.page) throw new Error('Browser not initialized');
+      await this.login(config.email, config.password);
+
+      await this.page.goto(config.scheduleUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 300000
+      });
+
+      logger.info('Navigated to schedule page');
+      
+    } catch (error) {
+      logger.error('Failed to scrape schedule data:', error);
       throw error;
     }
   }
@@ -482,6 +468,49 @@ export class InPlayGuruScraper {
     }
   }
 
+  async login(email: string, password: string) {
+    try {
+      if (!this.page) throw new Error('Browser not initialized');
+      
+      // Check if login button exists
+      try {
+        await this.page.waitForSelector('a.nav-link[href="https://inplayguru.com/login"]', { timeout: 3000 });
+      } catch (error) {
+        logger.info('Login button not found, user might be already logged in');
+        return;
+      }
 
+      // Click the login button
+      await this.page.click('a.nav-link[href="https://inplayguru.com/login"]');
+      
+      // Wait until URL changes to login page
+      await this.page.waitForFunction(
+        'window.location.href.includes("/login")',
+        { timeout: 5000 }
+      );
+      
+      logger.info('Successfully navigated to login page');
 
+      // Wait for the form elements to be present
+      await this.page.waitForSelector('input[name="email"]');
+      await this.page.waitForSelector('input[name="password"]');
+      await this.page.waitForSelector('button[type="submit"]');
+
+      // Fill in the form
+      await this.page.type('input[name="email"]', email);
+      await this.page.type('input[name="password"]', password);
+
+      // Submit the form and wait for navigation
+      await Promise.all([
+        this.page.waitForNavigation(),
+        this.page.click('button[type="submit"]')
+      ]);
+
+      logger.info('Login form submitted successfully');
+      
+    } catch (error) {
+      logger.error('Failed to login:', error);
+      throw error;
+    }
+  }
 } 
