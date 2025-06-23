@@ -167,3 +167,17 @@ export interface Odds {
   handicap: string;
   curr_line: boolean;
 }
+
+export interface ScheduleMatch {
+  time: string;
+  timeUTC: string;
+  timeFromNow: string;
+  league: string;
+  homeTeam: string;
+  awayTeam: string;
+}
+
+export interface ScheduleData {
+  matches: ScheduleMatch[];
+  timestamp: number;
+}
