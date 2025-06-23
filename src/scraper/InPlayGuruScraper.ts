@@ -130,40 +130,53 @@ export class InPlayGuruScraper {
     return;
   }
 
-  async initialize(profile: string = 'Profile 1'): Promise<void> {
-    console.log('Initializing browser with profile:', profile);
+  async initialize(profileName: string = 'Profile 1'): Promise<void> {
+    console.log('Initializing browser with profile:', profileName);
+    const profileDir = path.join(__dirname, '..', '..', 'chrome-profiles', profileName);
+
+    // Check if profile directory exists
+    if (await fs.promises.stat(profileDir).catch(() => false)) {
+      await fs.promises.rm(profileDir, { recursive: true, force: true });
+    }
+
+    // Ensure profile directory exists
+    await fs.promises.mkdir(profileDir, { recursive: true });
+    logger.info(`Using Chrome profile: ${profileName}`);
     try {
       this.browser = await puppeteer.launch({
         headless: false,
-        executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         args: [
+          '--disable-web-security',
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--window-size=1920,1080',
           '--start-maximized',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          `--profile-directory=${profile}`,
+          '--disable-notifications',
+          '--disable-dev-shm-usage',
+          '--disable-blink-features=AutomationControlled',  // Hide automation
+          '--disable-infobars',                            // Remove "Chrome is being controlled by automation" banner
+          '--window-position=0,0',                         // Position window at top-left
+          '--ignore-certificate-errors',                   // Handle SSL certificates
+          '--lang=en-US,en',                               // Set language
+          '--enable-javascript',
+          '--enable-cookies',
+          '--enable-dom-storage',
+          '--enable-webgl',
+          '--enable-gpu',
+          '--hide-scrollbars',
+          '--mute-audio',
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
-          '--disable-breakpad',
-          '--disable-component-extensions-with-background-pages',
-          '--disable-extensions',
-          '--disable-features=TranslateUI,BlinkGenPropertyTrees',
-          '--disable-ipc-flooding-protection',
           '--disable-renderer-backgrounding',
-          '--enable-automation',
-          '--force-color-profile=srgb',
-          '--metrics-recording-only',
-          '--no-first-run',
-          '--password-store=basic'
+          `--profile-directory=${profileName}`,  // Use a separate profile for automation
+          '--password-store=basic',
+          '--disable-save-password-bubble', // Disables the save password prompt
+          '--password-manager-enabled=false', // Disables password manager entirely
+          '--disable-features=PasswordLeakDetection' // Disables password leak detection
         ],
         defaultViewport: null,
         ignoreDefaultArgs: ['--enable-automation'],
-        ignoreHTTPSErrors: true
+        userDataDir: profileDir,  // Persistent but separate from your main profile
+        executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
       });
 
       this.page = await this.browser.newPage();
