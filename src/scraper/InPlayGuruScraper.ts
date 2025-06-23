@@ -10,6 +10,7 @@ import zlib from 'zlib';
 export class InPlayGuruScraper {
   private browser: Browser | null = null;
   private page: Page | null = null;
+  private schedulePage: Page | null = null;
   private readonly outputAnalysisPath = path.join(process.cwd(), 'output', 'analysis.json');
   private readonly tempOutputAnalysisPath = path.join(process.cwd(), 'output', 'analysis.json.tmp');
   private readonly outputAnalysisPathGz = path.join(process.cwd(), 'output', 'analysis.gz');
@@ -179,164 +180,9 @@ export class InPlayGuruScraper {
         executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
       });
 
-      this.page = await this.browser.newPage();
-
-      // Set longer timeout for navigation
-      await this.page.setDefaultNavigationTimeout(120000);
-
-      // Maximize window
-      const session = await this.page.target().createCDPSession();
-      const { windowId } = await session.send('Browser.getWindowForTarget');
-      await session.send('Browser.setWindowBounds', {
-        windowId,
-        bounds: { windowState: 'maximized' }
-      });
-
-      // Set user agent
-      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
-
-      // Set timezone
-      await this.page.emulateTimezone('America/New_York');
-
-      // Inject anti-detection scripts
-      await this.page.evaluateOnNewDocument(() => {
-        // Hide webdriver
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-
-        // Add language preferences
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-
-        // Add fake plugins
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => ({
-            length: 5,
-            item: () => ({
-              description: "Portable Document Format",
-              filename: "internal-pdf-viewer",
-              name: "Chrome PDF Plugin"
-            })
-          })
-        });
-
-        // Add Chrome specific properties
-        Object.defineProperty(window, 'chrome', {
-          get: () => ({
-            runtime: {},
-            app: {},
-            loadTimes: () => { },
-            csi: () => { }
-          })
-        });
-
-        // Mock permissions API
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = (parameters: any): Promise<any> =>
-          parameters.name === 'notifications'
-            ? Promise.resolve({
-              state: 'granted',
-              name: parameters.name,
-              onchange: null,
-              addEventListener: () => { },
-              removeEventListener: () => { },
-              dispatchEvent: () => true
-            })
-            : originalQuery(parameters);
-
-        // Add WebGL support
-        Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
-
-        // Mock canvas fingerprinting
-        const getContext = HTMLCanvasElement.prototype.getContext;
-        HTMLCanvasElement.prototype.getContext = function (
-          this: HTMLCanvasElement,
-          contextId: '2d' | 'bitmaprenderer' | 'webgl' | 'webgl2',
-          options?: CanvasRenderingContext2DSettings | ImageBitmapRenderingContextSettings | WebGLContextAttributes
-        ) {
-          const context = getContext.call(this, contextId, options);
-          if (context && contextId === '2d') {
-            const getImageData = (context as CanvasRenderingContext2D).getImageData;
-            (context as CanvasRenderingContext2D).getImageData = function (...args: Parameters<typeof getImageData>) {
-              return getImageData.apply(this, args);
-            };
-          }
-          return context;
-        } as typeof HTMLCanvasElement.prototype.getContext;
-
-        // Mock audio fingerprinting
-        const audioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (audioContext) {
-          const origCreateOscillator = audioContext.prototype.createOscillator;
-          audioContext.prototype.createOscillator = function () {
-            const oscillator = origCreateOscillator.call(this);
-            oscillator.start = () => { };
-            return oscillator;
-          };
-        }
-
-        // Add more browser features
-        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-        Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
-        Object.defineProperty(navigator, 'connection', {
-          get: () => ({
-            effectiveType: '4g',
-            rtt: 50,
-            downlink: 10,
-            saveData: false
-          })
-        });
-
-        // Mock battery API
-        Object.defineProperty(navigator, 'getBattery', {
-          get: () => () => Promise.resolve({
-            charging: true,
-            chargingTime: 0,
-            dischargingTime: Infinity,
-            level: 1,
-            addEventListener: () => { },
-            removeEventListener: () => { },
-            dispatchEvent: () => true
-          })
-        });
-      });
-
-      // Set common headers
-      await this.page.setExtraHTTPHeaders({
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      });
-
-      // Enable JavaScript and cookies
-      await this.page.setJavaScriptEnabled(true);
-      await this.page.setCacheEnabled(true);
-
-      // Add styles for proper window filling
-      await this.page.evaluate(() => {
-        const style = document.createElement('style');
-        style.textContent = `
-          html, body {
-            width: 100% !important;
-            height: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: hidden !important;
-          }
-          #root, .app-container {
-            width: 100% !important;
-            height: 100% !important;
-            min-height: 100vh !important;
-          }
-        `;
-        document.head.appendChild(style);
-      });
-
-      await this.page.goto(config.baseUrl, {
-        waitUntil: 'domcontentloaded',
-        timeout: 10000
-      });
+      this.page = await this.newPage(config.baseUrl);
+      await this.login(config.email, config.password);
+      this.schedulePage = await this.newPage(config.scheduleUrl);
 
       // Expose the processWebSocketData function to the browser
       await this.page.exposeFunction('sendWebSocketDataToBackend',
@@ -350,11 +196,171 @@ export class InPlayGuruScraper {
     }
   }
 
+  async newPage(url: string, timeout: number = 300000): Promise<Page> {
+    if (!this.browser) throw new Error('Browser not initialized');
+    const page = await this.browser.newPage();
+    // Set longer timeout for navigation
+    await page.setDefaultNavigationTimeout(120000);
+
+    // Maximize window
+    const session = await page.target().createCDPSession();
+    const { windowId } = await session.send('Browser.getWindowForTarget');
+    await session.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: { windowState: 'maximized' }
+    });
+
+    // Set user agent
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
+
+    // Set timezone
+    await page.emulateTimezone('America/New_York');
+
+    // Inject anti-detection scripts
+    await page.evaluateOnNewDocument(() => {
+      // Hide webdriver
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+      // Add language preferences
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+      // Add fake plugins
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => ({
+          length: 5,
+          item: () => ({
+            description: "Portable Document Format",
+            filename: "internal-pdf-viewer",
+            name: "Chrome PDF Plugin"
+          })
+        })
+      });
+
+      // Add Chrome specific properties
+      Object.defineProperty(window, 'chrome', {
+        get: () => ({
+          runtime: {},
+          app: {},
+          loadTimes: () => { },
+          csi: () => { }
+        })
+      });
+
+      // Mock permissions API
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters: any): Promise<any> =>
+        parameters.name === 'notifications'
+          ? Promise.resolve({
+            state: 'granted',
+            name: parameters.name,
+            onchange: null,
+            addEventListener: () => { },
+            removeEventListener: () => { },
+            dispatchEvent: () => true
+          })
+          : originalQuery(parameters);
+
+      // Add WebGL support
+      Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+
+      // Mock canvas fingerprinting
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (
+        this: HTMLCanvasElement,
+        contextId: '2d' | 'bitmaprenderer' | 'webgl' | 'webgl2',
+        options?: CanvasRenderingContext2DSettings | ImageBitmapRenderingContextSettings | WebGLContextAttributes
+      ) {
+        const context = getContext.call(this, contextId, options);
+        if (context && contextId === '2d') {
+          const getImageData = (context as CanvasRenderingContext2D).getImageData;
+          (context as CanvasRenderingContext2D).getImageData = function (...args: Parameters<typeof getImageData>) {
+            return getImageData.apply(this, args);
+          };
+        }
+        return context;
+      } as typeof HTMLCanvasElement.prototype.getContext;
+
+      // Mock audio fingerprinting
+      const audioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (audioContext) {
+        const origCreateOscillator = audioContext.prototype.createOscillator;
+        audioContext.prototype.createOscillator = function () {
+          const oscillator = origCreateOscillator.call(this);
+          oscillator.start = () => { };
+          return oscillator;
+        };
+      }
+
+      // Add more browser features
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+      Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+      Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
+      Object.defineProperty(navigator, 'connection', {
+        get: () => ({
+          effectiveType: '4g',
+          rtt: 50,
+          downlink: 10,
+          saveData: false
+        })
+      });
+
+      // Mock battery API
+      Object.defineProperty(navigator, 'getBattery', {
+        get: () => () => Promise.resolve({
+          charging: true,
+          chargingTime: 0,
+          dischargingTime: Infinity,
+          level: 1,
+          addEventListener: () => { },
+          removeEventListener: () => { },
+          dispatchEvent: () => true
+        })
+      });
+    });
+
+    // Set common headers
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache'
+    });
+
+    // Enable JavaScript and cookies
+    await page.setJavaScriptEnabled(true);
+    await page.setCacheEnabled(true);
+
+    // Add styles for proper window filling
+    await page.evaluate(() => {
+      const style = document.createElement('style');
+      style.textContent = `
+        html, body {
+          width: 100% !important;
+          height: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+        }
+        #root, .app-container {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 100vh !important;
+        }
+      `;
+      document.head.appendChild(style);
+    });
+
+    await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout
+    });
+    return page;
+  }
+
   async scrapeMatchData(): Promise<void> {
     try {
       if (!this.page) throw new Error('Browser not initialized');
-
-      await this.login(config.email, config.password);
 
       this.page.on('response', async (response: any) => {
         const url = response.url();
@@ -438,24 +444,18 @@ export class InPlayGuruScraper {
 
   async scrapeScheduleData(): Promise<void> {
     try {
-      if (!this.page) throw new Error('Browser not initialized');
-      await this.login(config.email, config.password);
-
-      await this.page.goto(config.scheduleUrl, {
-        waitUntil: 'domcontentloaded',
-        timeout: 300000
-      });
+      if (!this.schedulePage) throw new Error('Browser not initialized');
 
       logger.info('Navigated to schedule page');
 
       const scrapeData = async () => {
-        if (!this.page) throw new Error('Browser not initialized');
+        if (!this.schedulePage) throw new Error('Browser not initialized');
 
         // Wait for the table to be loaded
-        await this.page.waitForSelector('#table-fixtures');
+        await this.schedulePage.waitForSelector('#table-fixtures');
 
         // Extract schedule data
-        const scheduleData = await this.page.evaluate(() => {
+        const scheduleData = await this.schedulePage.evaluate(() => {
           const matches: any[] = [];
           const rows = document.querySelectorAll('#table-fixtures tbody tr');
 
@@ -489,7 +489,7 @@ export class InPlayGuruScraper {
         await this.saveScheduleData(scheduleData);
 
         logger.info(`Successfully scraped ${scheduleData.matches.length} schedules`);
-        await this.page.reload();
+        await this.schedulePage.reload();
       }
 
       setInterval(async () => {

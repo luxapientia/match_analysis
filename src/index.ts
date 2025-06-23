@@ -7,16 +7,13 @@ const password = process.env.PASSWORD || '';
 console.log(email, password);
 
 async function main() {
-  const matchScraper = new InPlayGuruScraper();
-  const scheduleScraper = new InPlayGuruScraper();
+  const scraper = new InPlayGuruScraper();
 
   try {
     // Start the HTTP server
     // Initialize and run the scraper
-    await scheduleScraper.initialize("schedule");
-    await scheduleScraper.scrapeScheduleData();
-    await matchScraper.initialize("match");
-    await matchScraper.scrapeMatchData();
+    await scraper.initialize("Profile 1");
+    await scraper.scrapeMatchData();
     
   } catch (error) {
     logger.error('Application error:', error);
