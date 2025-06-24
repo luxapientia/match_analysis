@@ -29,7 +29,7 @@ function deletePid() {
 function startServer(res) {
     if (fs.existsSync(PID_FILE)) return res.send('Already running.');
 
-    const child = spawn('npx', ['ts-node .\\src\\index.ts'], {
+    const child = spawn('npm', ['run', 'start:forever'], {
         detached: true,
         stdio: 'ignore',
         shell: true,
