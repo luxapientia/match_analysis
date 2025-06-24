@@ -153,11 +153,12 @@ export class InPlayGuruScraper {
           '--start-maximized',
           '--disable-notifications',
           '--disable-dev-shm-usage',
-          '--disable-blink-features=AutomationControlled',  // Hide automation
-          '--disable-infobars',                            // Remove "Chrome is being controlled by automation" banner
-          '--window-position=0,0',                         // Position window at top-left
-          '--ignore-certificate-errors',                   // Handle SSL certificates
-          '--lang=en-US,en',                               // Set language
+          '--disable-blink-features=AutomationControlled',
+          '--disable-infobars',
+          '--window-position=0,0',
+          '--ignore-certificate-errors',
+          '--ignore-certificate-errors-spki-list',
+          '--lang=en-US,en',
           '--enable-javascript',
           '--enable-cookies',
           '--enable-dom-storage',
@@ -168,15 +169,11 @@ export class InPlayGuruScraper {
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
-          `--profile-directory=${profileName}`,  // Use a separate profile for automation
-          '--password-store=basic',
-          '--disable-save-password-bubble', // Disables the save password prompt
-          '--password-manager-enabled=false', // Disables password manager entirely
-          '--disable-features=PasswordLeakDetection' // Disables password leak detection
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--profile-directory=Profile 1'
         ],
-        defaultViewport: null,
         ignoreDefaultArgs: ['--enable-automation'],
-        userDataDir: profileDir,  // Persistent but separate from your main profile
+        userDataDir: './chrome-automation-profile',
         executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
       });
 
