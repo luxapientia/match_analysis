@@ -5,7 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
+    "start:forever": "npm run build && node dist/forever.js",
     "dev": "ts-node src/index.ts",
+    "dev:forever": "npm run build && ts-node src/forever.ts",
     "build": "tsc",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
@@ -24,6 +26,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^5.1.0",
+    "forever": "^4.0.3",
     "puppeteer": "^21.10.0",
     "winston": "^3.11.0",
     "zod": "^3.25.67"
